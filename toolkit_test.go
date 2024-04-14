@@ -1,7 +1,7 @@
-package sheets
+package sheetsorm
 
 import (
-	"github.com/pproj/sheets-orm/column"
+	"github.com/pproj/sheetsorm/column"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap/zaptest"
 	"testing"

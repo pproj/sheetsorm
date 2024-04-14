@@ -2,7 +2,7 @@ package typemagic
 
 import (
 	"database/sql"
-	"github.com/pproj/sheets-orm/errors"
+	"github.com/pproj/sheetsorm/errors"
 	"reflect"
 	"strconv"
 )

@@ -1,11 +1,11 @@
-package sheets
+package sheetsorm
 
 import (
 	"context"
 	"fmt"
-	"github.com/pproj/sheets-orm/api"
-	"github.com/pproj/sheets-orm/column"
-	"github.com/pproj/sheets-orm/errors"
+	"github.com/pproj/sheetsorm/api"
+	"github.com/pproj/sheetsorm/column"
+	"github.com/pproj/sheetsorm/errors"
 	"go.uber.org/zap"
 	"google.golang.org/api/sheets/v4"
 	"slices"

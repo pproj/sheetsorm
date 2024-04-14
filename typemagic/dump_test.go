@@ -3,8 +3,8 @@ package typemagic
 import (
 	"database/sql/driver"
 	"github.com/google/uuid"
-	"github.com/pproj/sheets-orm/column"
-	"github.com/pproj/sheets-orm/errors"
+	"github.com/pproj/sheetsorm/column"
+	"github.com/pproj/sheetsorm/errors"
 	"github.com/stretchr/testify/assert"
 	"reflect"
 	"testing"

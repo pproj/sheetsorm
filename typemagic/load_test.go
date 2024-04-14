@@ -2,7 +2,7 @@ package typemagic
 
 import (
 	"github.com/google/uuid"
-	"github.com/pproj/sheets-orm/errors"
+	"github.com/pproj/sheetsorm/errors"
 	"github.com/stretchr/testify/assert"
 	"reflect"
 	"strconv"

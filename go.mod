@@ -1,4 +1,4 @@
-module github.com/pproj/sheets-orm
+module github.com/pproj/sheetsorm
 
 go 1.22.2
 

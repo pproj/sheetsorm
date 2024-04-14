@@ -1,7 +1,7 @@
 package typemagic
 
 import (
-	"github.com/pproj/sheets-orm/column"
+	"github.com/pproj/sheetsorm/column"
 	"strings"
 )
 

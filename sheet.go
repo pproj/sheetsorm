@@ -1,12 +1,12 @@
-package sheets
+package sheetsorm
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/pproj/sheets-orm/api"
-	e "github.com/pproj/sheets-orm/errors"
-	"github.com/pproj/sheets-orm/typemagic"
+	"github.com/pproj/sheetsorm/api"
+	e "github.com/pproj/sheetsorm/errors"
+	"github.com/pproj/sheetsorm/typemagic"
 	"go.uber.org/zap"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"

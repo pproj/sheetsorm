@@ -1,7 +1,7 @@
 package column
 
 import (
-	"github.com/pproj/sheets-orm/errors"
+	"github.com/pproj/sheetsorm/errors"
 	"slices"
 )
 

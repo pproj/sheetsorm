@@ -1,7 +1,7 @@
-package sheets
+package sheetsorm
 
 import (
-	"github.com/pproj/sheets-orm/errors"
+	"github.com/pproj/sheetsorm/errors"
 )
 
 type StructureConfig struct {

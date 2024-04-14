@@ -3,7 +3,7 @@ package typemagic
 import (
 	"database/sql/driver"
 	"fmt"
-	"github.com/pproj/sheets-orm/column"
+	"github.com/pproj/sheetsorm/column"
 	"reflect"
 	"slices"
 	"strconv"
