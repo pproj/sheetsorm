@@ -1,11 +1,245 @@
 package sheetsorm
 
 import (
+	"context"
+	"errors"
+	"github.com/pproj/sheetsorm/api"
 	"github.com/pproj/sheetsorm/column"
+	e "github.com/pproj/sheetsorm/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap/zaptest"
+	"google.golang.org/api/sheets/v4"
 	"testing"
 )
+
+func TestToolkit_uidsToRowNums(t *testing.T) {
+	testError := errors.New("hello")
+
+	testCases := []struct {
+		name string
+
+		toolkitSkipRows int
+		toolkitUidCol   string
+
+		apiResult *sheets.ValueRange
+		apiError  error
+
+		apiExpectedRange string
+		apiExpectCalled  bool
+
+		uids []string
+
+		expectedRowNums []int
+		expectedErr     error
+	}{
+		{
+			name:            "happy__simple",
+			toolkitSkipRows: 0,
+			toolkitUidCol:   "A",
+			apiResult: &sheets.ValueRange{
+				MajorDimension: "ROWS",
+				Range:          "A1:A",
+				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
+			},
+			apiError:         nil,
+			apiExpectedRange: "A1:A",
+			apiExpectCalled:  true,
+			uids:             []string{"1", "2", "3"},
+			expectedRowNums:  []int{1, 2, 3},
+			expectedErr:      nil,
+		},
+		{
+			name:            "happy__simple_other_col",
+			toolkitSkipRows: 0,
+			toolkitUidCol:   "D",
+			apiResult: &sheets.ValueRange{
+				MajorDimension: "ROWS",
+				Range:          "D1:D",
+				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
+			},
+			apiError:         nil,
+			apiExpectedRange: "D1:D",
+			apiExpectCalled:  true,
+			uids:             []string{"1", "2", "3"},
+			expectedRowNums:  []int{1, 2, 3},
+			expectedErr:      nil,
+		},
+		{
+			name:            "happy__get_gap",
+			toolkitSkipRows: 0,
+			toolkitUidCol:   "A",
+			apiResult: &sheets.ValueRange{
+				MajorDimension: "ROWS",
+				Range:          "A1:A",
+				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
+			},
+			apiError:         nil,
+			apiExpectedRange: "A1:A",
+			apiExpectCalled:  true,
+			uids:             []string{"1", "3"},
+			expectedRowNums:  []int{1, 3},
+			expectedErr:      nil,
+		},
+		{
+			name:            "happy__skip_rows",
+			toolkitSkipRows: 3,
+			toolkitUidCol:   "A",
+			apiResult: &sheets.ValueRange{
+				MajorDimension: "ROWS",
+				Range:          "A4:A",
+				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
+			},
+			apiError:         nil,
+			apiExpectedRange: "A4:A",
+			apiExpectCalled:  true,
+			uids:             []string{"1", "2", "3"},
+			expectedRowNums:  []int{4, 5, 6},
+			expectedErr:      nil,
+		},
+		{
+			name:            "happy__get_rows_with_some_empty",
+			toolkitSkipRows: 0,
+			toolkitUidCol:   "A",
+			apiResult: &sheets.ValueRange{
+				MajorDimension: "ROWS",
+				Range:          "A1:A",
+				Values:         [][]interface{}{{"1"}, {"2"}, {}, {"3"}, {}, {""}, {"4"}},
+			},
+			apiError:         nil,
+			apiExpectedRange: "A1:A",
+			apiExpectCalled:  true,
+			uids:             []string{"1", "4"},
+			expectedRowNums:  []int{1, 7},
+			expectedErr:      nil,
+		},
+		{
+			name:            "happy__multi_fill",
+			toolkitSkipRows: 0,
+			toolkitUidCol:   "A",
+			apiResult: &sheets.ValueRange{
+				MajorDimension: "ROWS",
+				Range:          "A1:A",
+				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
+			},
+			apiError:         nil,
+			apiExpectedRange: "A1:A",
+			apiExpectCalled:  true,
+			uids:             []string{"1", "1", "2", "2"},
+			expectedRowNums:  []int{1, 1, 2, 2},
+			expectedErr:      nil,
+		},
+		{
+			name:            "happy__no_request_quick",
+			toolkitSkipRows: 0,
+			toolkitUidCol:   "A",
+			apiResult: &sheets.ValueRange{
+				MajorDimension: "ROWS",
+				Range:          "A1:A",
+				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
+			},
+			apiError:         nil,
+			apiExpectedRange: "A1:A",
+			apiExpectCalled:  false,
+			uids:             []string{},
+			expectedRowNums:  nil,
+			expectedErr:      nil,
+		},
+		{
+			name:            "error__uid_not_found",
+			toolkitSkipRows: 0,
+			toolkitUidCol:   "A",
+			apiResult: &sheets.ValueRange{
+				MajorDimension: "ROWS",
+				Range:          "A1:A",
+				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
+			},
+			apiError:         nil,
+			apiExpectedRange: "A1:A",
+			apiExpectCalled:  true,
+			uids:             []string{"4"},
+			expectedErr:      e.ErrRecordNotFound,
+		},
+		{
+			name:            "error__uid_multi_not_found_one",
+			toolkitSkipRows: 0,
+			toolkitUidCol:   "A",
+			apiResult: &sheets.ValueRange{
+				MajorDimension: "ROWS",
+				Range:          "A1:A",
+				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
+			},
+			apiError:         nil,
+			apiExpectedRange: "A1:A",
+			apiExpectCalled:  true,
+			uids:             []string{"1", "2", "4"},
+			expectedErr:      e.ErrRecordNotFound,
+		},
+		{
+			name:            "error__uid_not_provided",
+			toolkitSkipRows: 0,
+			toolkitUidCol:   "A",
+			apiResult: &sheets.ValueRange{
+				MajorDimension: "ROWS",
+				Range:          "A1:A",
+				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
+			},
+			apiError:         nil,
+			apiExpectedRange: "A1:A",
+			apiExpectCalled:  false,
+			uids:             []string{""},
+			expectedErr:      e.ErrEmptyUID,
+		},
+		{
+			name:            "error__api_error_propagated",
+			toolkitSkipRows: 0,
+			toolkitUidCol:   "A",
+			apiResult: &sheets.ValueRange{
+				MajorDimension: "ROWS",
+				Range:          "A1:A",
+				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
+			},
+			apiError:         testError,
+			apiExpectedRange: "A1:A",
+			apiExpectCalled:  true,
+			uids:             []string{"1", "2"},
+			expectedErr:      testError,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			maw := &api.MockApiWrapper{}
+			ctx := context.Background()
+
+			var apiCalled bool
+
+			maw.On("GetRange", ctx, tc.apiExpectedRange).Run(func(_ mock.Arguments) {
+				apiCalled = true
+			}).Return(tc.apiResult, tc.apiError)
+
+			testLogger := zaptest.NewLogger(t)
+			toolkit := &sheetsToolkit{
+				aw:       maw,
+				skipRows: tc.toolkitSkipRows,
+				uidCol:   tc.toolkitUidCol,
+				logger:   testLogger,
+			}
+
+			result, err := toolkit.uidsToRowNums(ctx, tc.uids)
+
+			if tc.expectedErr != nil {
+				assert.Error(t, err)
+				assert.ErrorIs(t, err, tc.expectedErr)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedRowNums, result)
+			}
+
+			assert.Equal(t, tc.apiExpectCalled, apiCalled)
+		})
+	}
+}
 
 func TestToolkit_translateRowDataToUpdateRanges(t *testing.T) {
 	testCases := []struct {

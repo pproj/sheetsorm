@@ -11,6 +11,7 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 	"reflect"
+	"slices"
 	"sync"
 )
 
@@ -196,7 +197,13 @@ func (si *SheetImpl) UpdateRecords(ctx context.Context, records ...interface{}) 
 	allData := make([]map[string]string, len(unwrappedRecords))
 	uids := make([]string, len(unwrappedRecords))
 	for i, r := range unwrappedRecords {
-		uids[i] = typemagic.DumpUID(r)
+		uid := typemagic.DumpUID(r)
+
+		if slices.Contains(uids, uid) {
+			return e.ErrMultiUpdate
+		}
+
+		uids[i] = uid
 		if uids[i] == "" {
 			return e.ErrEmptyUID
 		}

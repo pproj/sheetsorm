@@ -60,13 +60,12 @@ func (st *sheetsToolkit) uidsToRowNums(ctx context.Context, uids []string) ([]in
 	uidColRange := fmt.Sprintf("%[1]s%[2]d:%[1]s", st.uidCol, st.skipRows+1)
 	vals, err := st.aw.GetRange(ctx, uidColRange)
 	if err != nil {
-		st.logger.Error("Failed to get uid column", zap.String("range", uidColRange))
+		st.logger.Error("Failed to get uid column", zap.String("range", uidColRange), zap.Error(err))
 		return nil, err
 	}
 
 	rowNums := make([]int, len(uids))
 
-rowLoop:
 	for rowI, row := range vals.Values { // the header is already skipped by the request
 		rowNum := rowI + 1 + st.skipRows // zero index correction plus skipped rows
 
@@ -76,18 +75,18 @@ rowLoop:
 		}
 
 		rowUid := row[0]
+		if rowUid == "" {
+			// We do not consider empty uids as valid
+			// it would be hard to distinguish in sheets as well
+			continue
+		}
+
 		// we have rowNum - rowUid pairs here
 
 		for i, uid := range uids {
 			if rowUid == uid {
 				st.logger.Debug("Translated uid to row num", zap.String("uid", uid), zap.Int("rowNum", rowNum))
 				rowNums[i] = rowNum
-
-				if i+1 == len(rowNums) { // this was the last element to fill
-					break rowLoop
-				}
-
-				continue rowLoop
 			}
 			if ctx.Err() != nil { // context cancelled
 				return nil, ctx.Err()
@@ -280,6 +279,7 @@ func (st *sheetsToolkit) translateRowDataToUpdateRanges(rowNum int, row map[stri
 
 // updateRecords the uids should be a list of uids and the records should be the corresponding records, but omitting read-only fields, and fields don't wanted to be updated
 // this function does not modify data in-place, instead it returns the new data, in the same order it got it... TODO: consider using channels (some other funcs may need to be changed as well)
+// make sure there are no duplicates in the uids,...
 func (st *sheetsToolkit) updateRecords(ctx context.Context, uids []string, records []map[string]string) ([]map[string]string, error) {
 
 	// Resolve all uids to row numbers using a single API call
