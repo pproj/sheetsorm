@@ -1,5 +1,7 @@
 # Sheets-orm for Golang
 
+[![Build Status](https://drone.k8s.marcsello.com/api/badges/pproj/sheetsorm/status.svg)](https://drone.k8s.marcsello.com/pproj/sheetsorm)
+
 This is a very-simple orm-like library for Google Sheets, that we use in our internal administration tasks.
 
 This project is currently under heavy development.
