@@ -28,7 +28,7 @@ func main() {
 
 	// Create new Sheet instance
 
-	cfg := sheets.StructureConfig{
+	cfg := sheetsorm.StructureConfig{
 		DocID:    "", // Google sheets ID
 		Sheet:    "", // Empty string means the default sheet here
 		SkipRows: 1,  // The first row is a header, so we should skip it
