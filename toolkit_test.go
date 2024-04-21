@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/pproj/sheetsorm/api"
+	"github.com/pproj/sheetsorm/cache"
 	"github.com/pproj/sheetsorm/column"
 	e "github.com/pproj/sheetsorm/errors"
 	"github.com/stretchr/testify/assert"
@@ -30,8 +31,9 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 
 		uids []string
 
-		expectedRowNums []int
-		expectedErr     error
+		expectedRowNums    []int
+		expectedCacheCount int
+		expectedErr        error
 	}{
 		{
 			name:            "happy__simple",
@@ -42,12 +44,13 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 				Range:          "A1:A",
 				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
 			},
-			apiError:         nil,
-			apiExpectedRange: "A1:A",
-			apiExpectCalled:  true,
-			uids:             []string{"1", "2", "3"},
-			expectedRowNums:  []int{1, 2, 3},
-			expectedErr:      nil,
+			apiError:           nil,
+			apiExpectedRange:   "A1:A",
+			apiExpectCalled:    true,
+			uids:               []string{"1", "2", "3"},
+			expectedRowNums:    []int{1, 2, 3},
+			expectedCacheCount: 3,
+			expectedErr:        nil,
 		},
 		{
 			name:            "happy__simple_other_col",
@@ -58,12 +61,13 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 				Range:          "D1:D",
 				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
 			},
-			apiError:         nil,
-			apiExpectedRange: "D1:D",
-			apiExpectCalled:  true,
-			uids:             []string{"1", "2", "3"},
-			expectedRowNums:  []int{1, 2, 3},
-			expectedErr:      nil,
+			apiError:           nil,
+			apiExpectedRange:   "D1:D",
+			apiExpectCalled:    true,
+			uids:               []string{"1", "2", "3"},
+			expectedRowNums:    []int{1, 2, 3},
+			expectedCacheCount: 3,
+			expectedErr:        nil,
 		},
 		{
 			name:            "happy__get_gap",
@@ -74,12 +78,13 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 				Range:          "A1:A",
 				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
 			},
-			apiError:         nil,
-			apiExpectedRange: "A1:A",
-			apiExpectCalled:  true,
-			uids:             []string{"1", "3"},
-			expectedRowNums:  []int{1, 3},
-			expectedErr:      nil,
+			apiError:           nil,
+			apiExpectedRange:   "A1:A",
+			apiExpectCalled:    true,
+			uids:               []string{"1", "3"},
+			expectedRowNums:    []int{1, 3},
+			expectedCacheCount: 3,
+			expectedErr:        nil,
 		},
 		{
 			name:            "happy__skip_rows",
@@ -90,12 +95,13 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 				Range:          "A4:A",
 				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
 			},
-			apiError:         nil,
-			apiExpectedRange: "A4:A",
-			apiExpectCalled:  true,
-			uids:             []string{"1", "2", "3"},
-			expectedRowNums:  []int{4, 5, 6},
-			expectedErr:      nil,
+			apiError:           nil,
+			apiExpectedRange:   "A4:A",
+			apiExpectCalled:    true,
+			uids:               []string{"1", "2", "3"},
+			expectedRowNums:    []int{4, 5, 6},
+			expectedCacheCount: 3,
+			expectedErr:        nil,
 		},
 		{
 			name:            "happy__get_rows_with_some_empty",
@@ -106,12 +112,13 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 				Range:          "A1:A",
 				Values:         [][]interface{}{{"1"}, {"2"}, {}, {"3"}, {}, {""}, {"4"}},
 			},
-			apiError:         nil,
-			apiExpectedRange: "A1:A",
-			apiExpectCalled:  true,
-			uids:             []string{"1", "4"},
-			expectedRowNums:  []int{1, 7},
-			expectedErr:      nil,
+			apiError:           nil,
+			apiExpectedRange:   "A1:A",
+			apiExpectCalled:    true,
+			uids:               []string{"1", "4"},
+			expectedRowNums:    []int{1, 7},
+			expectedCacheCount: 4,
+			expectedErr:        nil,
 		},
 		{
 			name:            "happy__multi_fill",
@@ -122,12 +129,13 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 				Range:          "A1:A",
 				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
 			},
-			apiError:         nil,
-			apiExpectedRange: "A1:A",
-			apiExpectCalled:  true,
-			uids:             []string{"1", "1", "2", "2"},
-			expectedRowNums:  []int{1, 1, 2, 2},
-			expectedErr:      nil,
+			apiError:           nil,
+			apiExpectedRange:   "A1:A",
+			apiExpectCalled:    true,
+			uids:               []string{"1", "1", "2", "2"},
+			expectedRowNums:    []int{1, 1, 2, 2},
+			expectedCacheCount: 3,
+			expectedErr:        nil,
 		},
 		{
 			name:            "happy__no_request_quick",
@@ -138,12 +146,13 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 				Range:          "A1:A",
 				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
 			},
-			apiError:         nil,
-			apiExpectedRange: "A1:A",
-			apiExpectCalled:  false,
-			uids:             []string{},
-			expectedRowNums:  nil,
-			expectedErr:      nil,
+			apiError:           nil,
+			apiExpectedRange:   "A1:A",
+			apiExpectCalled:    false,
+			uids:               []string{},
+			expectedRowNums:    nil,
+			expectedCacheCount: 0,
+			expectedErr:        nil,
 		},
 		{
 			name:            "error__uid_not_found",
@@ -154,11 +163,12 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 				Range:          "A1:A",
 				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
 			},
-			apiError:         nil,
-			apiExpectedRange: "A1:A",
-			apiExpectCalled:  true,
-			uids:             []string{"4"},
-			expectedErr:      e.ErrRecordNotFound,
+			apiError:           nil,
+			apiExpectedRange:   "A1:A",
+			apiExpectCalled:    true,
+			uids:               []string{"4"},
+			expectedCacheCount: 3,
+			expectedErr:        e.ErrRecordNotFound,
 		},
 		{
 			name:            "error__uid_multi_not_found_one",
@@ -169,11 +179,12 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 				Range:          "A1:A",
 				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
 			},
-			apiError:         nil,
-			apiExpectedRange: "A1:A",
-			apiExpectCalled:  true,
-			uids:             []string{"1", "2", "4"},
-			expectedErr:      e.ErrRecordNotFound,
+			apiError:           nil,
+			apiExpectedRange:   "A1:A",
+			apiExpectCalled:    true,
+			uids:               []string{"1", "2", "4"},
+			expectedCacheCount: 3,
+			expectedErr:        e.ErrRecordNotFound,
 		},
 		{
 			name:            "error__uid_not_provided",
@@ -184,11 +195,12 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 				Range:          "A1:A",
 				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
 			},
-			apiError:         nil,
-			apiExpectedRange: "A1:A",
-			apiExpectCalled:  false,
-			uids:             []string{""},
-			expectedErr:      e.ErrEmptyUID,
+			apiError:           nil,
+			apiExpectedRange:   "A1:A",
+			apiExpectCalled:    false,
+			uids:               []string{""},
+			expectedCacheCount: 0,
+			expectedErr:        e.ErrEmptyUID,
 		},
 		{
 			name:            "error__api_error_propagated",
@@ -199,11 +211,12 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 				Range:          "A1:A",
 				Values:         [][]interface{}{{"1"}, {"2"}, {"3"}},
 			},
-			apiError:         testError,
-			apiExpectedRange: "A1:A",
-			apiExpectCalled:  true,
-			uids:             []string{"1", "2"},
-			expectedErr:      testError,
+			apiError:           testError,
+			apiExpectedRange:   "A1:A",
+			apiExpectCalled:    true,
+			uids:               []string{"1", "2"},
+			expectedCacheCount: 0,
+			expectedErr:        testError,
 		},
 	}
 
@@ -218,12 +231,23 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 				apiCalled = true
 			}).Return(tc.apiResult, tc.apiError)
 
+			var cacheCalled int
+
+			muic := &cache.MockRowUIDCache{}
+			muic.On("CacheUID", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+				cacheCalled++
+				uid := args.String(0)
+				rowNum := args.Int(1)
+				assert.Equal(t, tc.apiResult.Values[rowNum-tc.toolkitSkipRows-1][0], uid)
+			})
+
 			testLogger := zaptest.NewLogger(t)
 			toolkit := &sheetsToolkit{
 				aw:       maw,
 				skipRows: tc.toolkitSkipRows,
 				uidCol:   tc.toolkitUidCol,
 				logger:   testLogger,
+				uidCache: muic,
 			}
 
 			result, err := toolkit.uidsToRowNums(ctx, tc.uids)
@@ -237,6 +261,7 @@ func TestToolkit_uidsToRowNums(t *testing.T) {
 			}
 
 			assert.Equal(t, tc.apiExpectCalled, apiCalled)
+			assert.Equal(t, tc.expectedCacheCount, cacheCalled)
 		})
 	}
 }

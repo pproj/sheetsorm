@@ -26,6 +26,7 @@ type RowUIDCache interface {
 // and it is possible to drift away a lot from the actual sheet this way. Therefore, a short forget policy is a MUST for RowCache
 // Generally for small applications, RowCache isn't really recommended, as it's not really useful when there are a low amount of requests.
 // Errors from RowCache isn't interesting by sheetsorm either, the interface does not require error reporting capability on purpose.
+// The row cache WILL NEVER be used to lookup UIDs even if they are technically could be
 type RowCache interface {
 	// CacheRow stores an entire row for a rowNum
 	CacheRow(int, map[string]string)

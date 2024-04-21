@@ -60,6 +60,8 @@ func newToolkit(
 }
 
 // uidsToRowNums does only a single API call, and can resolve multiple UIDs to row numbers.
+// it does store received data in cache, but does not do lookups to it
+// (the reason for that is that we want to explicit control over when we want data from cache)
 func (st *sheetsToolkit) uidsToRowNums(ctx context.Context, uids []string) ([]int, error) {
 	if len(uids) == 0 {
 		return nil, nil // nothing to do
@@ -70,7 +72,6 @@ func (st *sheetsToolkit) uidsToRowNums(ctx context.Context, uids []string) ([]in
 		}
 	}
 
-	// TODO: add caching here
 	uidColRange := fmt.Sprintf("%[1]s%[2]d:%[1]s", st.uidCol, st.skipRows+1)
 	vals, err := st.aw.GetRange(ctx, uidColRange)
 	if err != nil {
@@ -88,14 +89,15 @@ func (st *sheetsToolkit) uidsToRowNums(ctx context.Context, uids []string) ([]in
 			continue
 		}
 
-		rowUid := row[0]
+		rowUid := row[0].(string)
 		if rowUid == "" {
 			// We do not consider empty uids as valid
 			// it would be hard to distinguish in sheets as well
 			continue
 		}
 
-		// we have rowNum - rowUid pairs here
+		// we have rowNum - rowUid pairs here, let's greedy cache them...
+		st.uidCache.CacheUID(rowUid, rowNum)
 
 		for i, uid := range uids {
 			if rowUid == uid {
@@ -118,8 +120,10 @@ func (st *sheetsToolkit) uidsToRowNums(ctx context.Context, uids []string) ([]in
 }
 
 // uidToRowNum resolves a single uid to a row number
+// it does store received data in cache, but does not do lookups to it
+// (the reason for that is that we want to explicit control over when we want data from cache)
 func (st *sheetsToolkit) uidToRowNum(ctx context.Context, uid string) (int, error) {
-	nums, err := st.uidsToRowNums(ctx, []string{uid})
+	nums, err := st.uidsToRowNums(ctx, []string{uid}) // < cache saving implemented here
 	if err != nil {
 		return 0, err
 	}
@@ -140,8 +144,9 @@ func (st *sheetsToolkit) translateFullRowToMap(row []interface{}) map[string]str
 	return resultSet
 }
 
+// getDataMapFromRowNum stores received data in cache, but does not do lookups to it
+// (the reason for that is that we want to explicit control over when we want data from cache)
 func (st *sheetsToolkit) getDataMapFromRowNum(ctx context.Context, rowNum int) (map[string]string, error) {
-	// TODO: maybe add caching here??
 	rangeStr := fmt.Sprintf("%[1]s%[3]d:%[2]s%[3]d", st.firstCol, st.lastCol, rowNum)
 
 	vals, err := st.aw.GetRange(ctx, rangeStr)
@@ -151,9 +156,14 @@ func (st *sheetsToolkit) getDataMapFromRowNum(ctx context.Context, rowNum int) (
 	}
 
 	row := vals.Values[0]
-	return st.translateFullRowToMap(row), nil
+	rowData := st.translateFullRowToMap(row)
+
+	st.rowCache.CacheRow(rowNum, rowData)
+	return rowData, nil
 }
 
+// getDataMapsFromRowNums does store recieved data in cache, but does not do lookups against it.
+// (the reason for that is that we want to explicit control over when we want data from cache)
 func (st *sheetsToolkit) getDataMapsFromRowNums(ctx context.Context, rowNums []int) ([]map[string]string, error) {
 
 	ranges := make([]string, len(rowNums))
@@ -171,35 +181,98 @@ func (st *sheetsToolkit) getDataMapsFromRowNums(ctx context.Context, rowNums []i
 	out := make([]map[string]string, len(rowNums))
 	for i, row := range vals.ValueRanges { // yay: The order of the ValueRanges is the same as the order of the requested ranges
 		out[i] = st.translateFullRowToMap(row.Values[0])
+		st.rowCache.CacheRow(rowNums[i], out[i])
 	}
 
 	return out, nil
 }
 
+// getRecordData first tries to look up data from caches, if it fails loads the data from the sheet
 func (st *sheetsToolkit) getRecordData(ctx context.Context, uid string) (map[string]string, error) {
-	rowNum, err := st.uidToRowNum(ctx, uid)
-	if err != nil {
-		st.logger.Error("Failed to translate UID to row number", zap.Error(err), zap.String("uid", uid))
-		return nil, err
+	var err error
+
+	rowNum, uidCacheHit := st.uidCache.GetRowNumByUID(uid)
+	st.logger.Debug("uid cache lookup complete", zap.Int("cachedRowNum", rowNum), zap.Bool("cacheHit", uidCacheHit), zap.String("uid", uid))
+
+	if !uidCacheHit {
+		rowNum, err = st.uidToRowNum(ctx, uid)
+		if err != nil {
+			st.logger.Error("Failed to translate UID to row number", zap.Error(err), zap.String("uid", uid))
+			return nil, err
+		}
 	}
-	var recordDataMap map[string]string
-	recordDataMap, err = st.getDataMapFromRowNum(ctx, rowNum)
-	if err != nil {
-		st.logger.Error("Failed to get data for row", zap.Error(err), zap.String("uid", uid), zap.Int("rowNum", rowNum))
-		return nil, err
+
+	recordDataMap, rowCacheHit := st.rowCache.GetRow(rowNum)
+	st.logger.Debug("row cache lookup complete", zap.Int("rowNum", rowNum), zap.Bool("cacheHit", rowCacheHit))
+
+	if !rowCacheHit {
+		recordDataMap, err = st.getDataMapFromRowNum(ctx, rowNum)
+		if err != nil {
+			st.logger.Error("Failed to get data for row", zap.Error(err), zap.String("uid", uid), zap.Int("rowNum", rowNum))
+			return nil, err
+		}
 	}
 
 	uidOut := recordDataMap[st.uidCol]
 	if uidOut != uid {
-		// TODO: Cache is inconsistent, must be dropped, and retried
-		return nil, fmt.Errorf("wtf")
+		// seems like the data is changed, between the getRowNum and getRow calls,
+		// if caches were involved, let's retry the calls without them.
+		// if we still get inconsistent data then something must be wrong, that we can not figure out...
+
+		if !(uidCacheHit || rowCacheHit) {
+			// caches were not involved, the data returned is just bad...
+			st.logger.Error("The requested UID does not match the UID returned from the API", zap.String("uidRequested", uid), zap.String("uidReturned", uidOut))
+			return nil, errors.ErrInconsistentData
+		}
+
+		// Seems like there could be cache inconsistency, we drop all data and retry...
+		st.logger.Debug("There were some cache inconsistency, we re-try fetching stuff directly from the API",
+			zap.String("uidRequested", uid), zap.String("uidReturned", uidOut),
+			zap.Bool("uidCacheHit", uidCacheHit), zap.Bool("rowCacheHit", rowCacheHit),
+		)
+
+		// invalidate data
+		if uidCacheHit {
+			st.uidCache.InvalidateUID(uid)
+			st.uidCache.InvalidateUID(uidOut)
+		}
+		if rowCacheHit {
+			st.rowCache.InvalidateRow(rowNum)
+		}
+
+		// read data as fresh...
+
+		// first the row num (if it was cached, if not then we shouldn't trash the api requests)
+		if uidCacheHit { // the UID was cached, let's gather it freshly from the api...
+			rowNum, err = st.uidToRowNum(ctx, uid)
+			if err != nil {
+				st.logger.Error("Failed to translate UID to row number", zap.Error(err), zap.String("uid", uid))
+				return nil, err
+			}
+		}
+
+		// always read new row data...
+		recordDataMap, err = st.getDataMapFromRowNum(ctx, rowNum)
+		if err != nil {
+			st.logger.Error("Failed to get data for row", zap.Error(err), zap.String("uid", uid), zap.Int("rowNum", rowNum))
+			return nil, err
+		}
+
+		// check success one last time if still wrong, give up...
+		uidOut = recordDataMap[st.uidCol]
+		if uidOut != uid {
+			st.logger.Error("The requested UID does not match the UID returned from the API", zap.String("uidRequested", uid), zap.String("uidReturned", uidOut))
+			return nil, errors.ErrInconsistentData
+		}
+
 	}
 
 	return recordDataMap, nil
 }
 
+// getAllRecordsData gets all records via a single API call, it does not look up data from cache, but updates it
 func (st *sheetsToolkit) getAllRecordsData(ctx context.Context) (<-chan map[string]string, error) {
-	rangeStr := fmt.Sprintf("%s%d:%s", st.firstCol, st.skipRows, st.lastCol)
+	rangeStr := fmt.Sprintf("%s%d:%s", st.firstCol, st.skipRows+1, st.lastCol)
 
 	vals, err := st.aw.GetRange(ctx, rangeStr)
 	if err != nil {
@@ -212,15 +285,20 @@ func (st *sheetsToolkit) getAllRecordsData(ctx context.Context) (<-chan map[stri
 	go func() {
 		defer close(outChan)
 		var c int
-		for _, val := range vals.Values {
+		for i, val := range vals.Values {
 			if ctx.Err() != nil { // context cancelled
 				return
 			}
 
+			rowNum := i + st.skipRows + 1
 			dataMap := st.translateFullRowToMap(val)
 			uid := dataMap[st.uidCol]
 
 			if uid != "" {
+				// greedy caching of data...
+				st.rowCache.CacheRow(rowNum, dataMap)
+				st.uidCache.CacheUID(uid, rowNum)
+
 				st.logger.Debug("Passing a new row", zap.String("uid", uid))
 				c++
 				outChan <- dataMap
@@ -294,9 +372,13 @@ func (st *sheetsToolkit) translateRowDataToUpdateRanges(rowNum int, row map[stri
 // updateRecords the uids should be a list of uids and the records should be the corresponding records, but omitting read-only fields, and fields don't wanted to be updated
 // this function does not modify data in-place, instead it returns the new data, in the same order it got it... TODO: consider using channels (some other funcs may need to be changed as well)
 // make sure there are no duplicates in the uids,...
+// Also this function drops related entries from the cache, so they could be refreshed there as well. It does not look up anything from cache.
+// This is a very taxing call, as it does at least 3 API calls each time it is called, and two of those calls are batch calls.
 func (st *sheetsToolkit) updateRecords(ctx context.Context, uids []string, records []map[string]string) ([]map[string]string, error) {
 
-	// Resolve all uids to row numbers using a single API call
+	// Resolve all uids to row numbers using a single API call, we don't want to use the cache here, because
+	// if we base our update call on stale data, that will cause headache
+	// Note: we might want to use cache if we figure out a way to do proper transactions against the sheets api
 	rowNums, err := st.uidsToRowNums(ctx, uids)
 	if err != nil {
 		st.logger.Error("Failure while resolving uids to row nums", zap.Error(err))
@@ -314,6 +396,16 @@ func (st *sheetsToolkit) updateRecords(ctx context.Context, uids []string, recor
 		valRangesForRecord := st.translateRowDataToUpdateRanges(rowNums[i], r)
 		valRanges = append(valRanges, valRangesForRecord...)
 
+		// check if UID is needed to be dropped from the cache
+		newUID := r[st.uidCol]
+		oldUID := uids[i]
+		if newUID != "" && newUID != oldUID {
+			// There possibly will be an update in the UID column, so we might want these cache entries to be dropped
+			st.uidCache.InvalidateUID(newUID) // the new uid
+			st.uidCache.InvalidateUID(oldUID) // the old uid
+			st.logger.Debug("Invalidated UIDs in cache", zap.Strings("uids", []string{newUID, oldUID}))
+		}
+
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -325,6 +417,12 @@ func (st *sheetsToolkit) updateRecords(ctx context.Context, uids []string, recor
 		st.logger.Debug("nothing to update...")
 		return nil, nil
 	}
+
+	// Before doing the actual update, drop all row cache data that would go stale
+	for _, rowNum := range rowNums {
+		st.rowCache.InvalidateRow(rowNum)
+	}
+	st.logger.Debug("Invalidated row data in cache", zap.Ints("rowNums", rowNums))
 
 	var resp *sheets.BatchUpdateValuesResponse
 	resp, err = st.aw.BatchUpdate(ctx, valRanges)
@@ -339,5 +437,5 @@ func (st *sheetsToolkit) updateRecords(ctx context.Context, uids []string, recor
 		zap.Int64("TotalUpdatedColumns", resp.TotalUpdatedColumns),
 	)
 
-	return st.getDataMapsFromRowNums(ctx, rowNums)
+	return st.getDataMapsFromRowNums(ctx, rowNums) // see? we don't want to load stuff from cache,... even if it's invalidated, but we want to fill it up with the new values, which is done by this function automagically
 }
