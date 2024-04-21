@@ -2,9 +2,12 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"go.uber.org/zap"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/sheets/v4"
+	"net/http"
 	"strings"
 )
 
@@ -26,6 +29,11 @@ func NewApiWrapper(srv *sheets.Service, docID string, sheet string, logger *zap.
 	}
 }
 
+func IsTooManyRequests(err error) bool {
+	var apiErr *googleapi.Error
+	return errors.As(err, &apiErr) && apiErr.Code == http.StatusTooManyRequests
+}
+
 func (aw *ApiWrapperImpl) bindRange(range_ string) string {
 
 	if strings.Contains(range_, "!") {
@@ -40,13 +48,24 @@ func (aw *ApiWrapperImpl) bindRange(range_ string) string {
 }
 
 func (aw *ApiWrapperImpl) GetSpreadsheet(ctx context.Context) (*sheets.Spreadsheet, error) {
-	return aw.srv.Spreadsheets.Get(aw.docID).Context(ctx).Do()
+	var result *sheets.Spreadsheet
+	return result, DoRetry(ctx, aw.logger, func() error {
+		var err error
+		result, err = aw.srv.Spreadsheets.Get(aw.docID).Context(ctx).Do()
+		return err
+	}, IsTooManyRequests)
 }
 
 func (aw *ApiWrapperImpl) GetRange(ctx context.Context, range_ string) (*sheets.ValueRange, error) {
 	boundRange := aw.bindRange(range_)
 	aw.logger.Debug("Attempting to get data from sheet", zap.String("range", boundRange))
-	return aw.srv.Spreadsheets.Values.Get(aw.docID, boundRange).Context(ctx).Do()
+
+	var result *sheets.ValueRange
+	return result, DoRetry(ctx, aw.logger, func() error {
+		var err error
+		result, err = aw.srv.Spreadsheets.Values.Get(aw.docID, boundRange).Context(ctx).Do()
+		return err
+	}, IsTooManyRequests)
 }
 
 func (aw *ApiWrapperImpl) BatchGetRanges(ctx context.Context, ranges []string) (*sheets.BatchGetValuesResponse, error) {
@@ -55,7 +74,13 @@ func (aw *ApiWrapperImpl) BatchGetRanges(ctx context.Context, ranges []string) (
 		boundRanges[i] = aw.bindRange(r)
 	}
 	aw.logger.Debug("Attempting to batch get data from sheet", zap.Strings("ranges", boundRanges))
-	return aw.srv.Spreadsheets.Values.BatchGet(aw.docID).Context(ctx).Ranges(boundRanges...).Do()
+
+	var result *sheets.BatchGetValuesResponse
+	return result, DoRetry(ctx, aw.logger, func() error {
+		var err error
+		result, err = aw.srv.Spreadsheets.Values.BatchGet(aw.docID).Context(ctx).Ranges(boundRanges...).Do()
+		return err
+	}, IsTooManyRequests)
 }
 
 func (aw *ApiWrapperImpl) BatchUpdate(ctx context.Context, values []*sheets.ValueRange) (*sheets.BatchUpdateValuesResponse, error) {
@@ -83,5 +108,10 @@ func (aw *ApiWrapperImpl) BatchUpdate(ctx context.Context, values []*sheets.Valu
 		ValueInputOption:          "USER_ENTERED", // this is needed because otherwise the cell will be overwritten entirely
 	}
 
-	return aw.srv.Spreadsheets.Values.BatchUpdate(aw.docID, &req).Context(ctx).Do()
+	var result *sheets.BatchUpdateValuesResponse
+	return result, DoRetry(ctx, aw.logger, func() error {
+		var err error
+		result, err = aw.srv.Spreadsheets.Values.BatchUpdate(aw.docID, &req).Context(ctx).Do()
+		return err
+	}, IsTooManyRequests)
 }
