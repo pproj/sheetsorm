@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/pproj/sheetsorm/api"
+	"github.com/pproj/sheetsorm/cache"
 	"github.com/pproj/sheetsorm/column"
 	"github.com/pproj/sheetsorm/errors"
 	"go.uber.org/zap"
@@ -24,10 +25,21 @@ type sheetsToolkit struct {
 	cols     []string
 	uidCol   string
 
-	logger *zap.Logger
+	logger   *zap.Logger
+	uidCache cache.RowUIDCache
+	rowCache cache.RowCache
 }
 
-func newToolkit(aw api.ApiWrapper, cols column.Cols, uidCol string, skipRows int, logger *zap.Logger) (*sheetsToolkit, error) {
+func newToolkit(
+	aw api.ApiWrapper,
+	cols column.Cols,
+	uidCol string,
+	skipRows int,
+	logger *zap.Logger,
+	uidCache cache.RowUIDCache,
+	rowCache cache.RowCache,
+) (*sheetsToolkit, error) {
+
 	if !cols.Contains(uidCol) {
 		return nil, errors.InvalidUIDCol
 	}
@@ -41,7 +53,9 @@ func newToolkit(aw api.ApiWrapper, cols column.Cols, uidCol string, skipRows int
 		cols:     cols,
 		uidCol:   uidCol,
 
-		logger: logger,
+		logger:   logger,
+		uidCache: uidCache,
+		rowCache: rowCache,
 	}, nil
 }
 

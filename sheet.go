@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/pproj/sheetsorm/api"
+	"github.com/pproj/sheetsorm/cache"
 	e "github.com/pproj/sheetsorm/errors"
 	"github.com/pproj/sheetsorm/typemagic"
 	"go.uber.org/zap"
-	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 	"reflect"
 	"slices"
@@ -32,28 +32,57 @@ type SheetImpl struct {
 
 	logger   *zap.Logger
 	skipRows int
+
+	uidCache cache.RowUIDCache
+	rowCache cache.RowCache
 }
 
-func NewSheet(credsPath string, st StructureConfig, logger *zap.Logger) (*SheetImpl, error) {
+type SheetInitializationOption func(*SheetImpl)
 
-	srv, err := sheets.NewService(context.Background(), option.WithCredentialsFile(credsPath))
+func NewSheet(srv *sheets.Service, st StructureConfig, opts ...SheetInitializationOption) (*SheetImpl, error) {
+
+	err := st.Validate()
 	if err != nil {
-		logger.Error("Failed to create new sheets service", zap.Error(err), zap.String("credsPath", credsPath))
 		return nil, err
 	}
 
-	err = st.Validate()
-	if err != nil {
-		logger.Error("The structure configuration seems invalid", zap.Error(err))
-		return nil, err
-	}
+	nc := &cache.NullCache{}
+	nl := zap.NewNop()
 
-	return &SheetImpl{
+	si := &SheetImpl{
 		mu:       &sync.RWMutex{},
-		aw:       api.NewApiWrapper(srv, st.DocID, st.Sheet, logger),
-		logger:   logger,
+		aw:       nil, // will be initialized after applying options, because they configure the logger as well
+		logger:   nl,
 		skipRows: st.SkipRows,
-	}, nil
+		uidCache: nc,
+		rowCache: nc,
+	}
+
+	for _, o := range opts {
+		o(si)
+	}
+
+	si.aw = api.NewApiWrapper(srv, st.DocID, st.Sheet, si.logger)
+
+	return si, nil
+}
+
+func WithRowUIDCache(c cache.RowUIDCache) SheetInitializationOption {
+	return func(si *SheetImpl) {
+		si.uidCache = c
+	}
+}
+
+func WithRowCache(c cache.RowCache) SheetInitializationOption {
+	return func(si *SheetImpl) {
+		si.rowCache = c
+	}
+}
+
+func WithLogger(l *zap.Logger) SheetInitializationOption {
+	return func(si *SheetImpl) {
+		si.logger = l
+	}
 }
 
 func typeAssert(val interface{}, expectedKinds ...reflect.Kind) bool {
@@ -73,7 +102,7 @@ func (si *SheetImpl) getToolkit(sample interface{}) (*sheetsToolkit, error) {
 	cols := typemagic.DumpCols(sample)
 	uidCol := typemagic.DumpUIDCol(sample)
 
-	return newToolkit(si.aw, cols, uidCol, si.skipRows, si.logger)
+	return newToolkit(si.aw, cols, uidCol, si.skipRows, si.logger, si.uidCache, si.rowCache)
 }
 
 func (si *SheetImpl) GetRecord(ctx context.Context, out interface{}) error {
