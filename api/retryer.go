@@ -33,7 +33,7 @@ func DoRetry(ctx context.Context, logger *zap.Logger, retryableFunc func() error
 				return err
 			}
 			// if we should retry, set the timeout
-			randomNumberMilliseconds := time.Duration(rand.Intn(1000)) * time.Millisecond
+			randomNumberMilliseconds := time.Duration(rand.Intn(1000)) * time.Millisecond // #nosec G404 this is just a retryer
 			exp := time.Duration(math.Pow(2, float64(tryCount))) * time.Second
 			nextTryTimeout = min(exp+randomNumberMilliseconds, maxBackoffTime)
 			logger.Debug("The retryable request failed. Scheduled a retry", zap.Int("tryCount", tryCount), zap.Int("maxRetryCount", maxRetryCount), zap.Error(err), zap.Duration("nextTryTimeout", nextTryTimeout))
