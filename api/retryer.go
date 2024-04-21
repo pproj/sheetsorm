@@ -24,6 +24,14 @@ func DoRetry(ctx context.Context, logger *zap.Logger, retryableFunc func() error
 		case <-time.After(nextTryTimeout):
 			logger.Debug("Attempting to do retryable request...", zap.Int("tryCount", tryCount), zap.Int("maxRetryCount", maxRetryCount))
 			err := retryableFunc()
+
+			if err == nil {
+				// no error, we are good
+				logger.Debug("Retryable request succeeded", zap.Int("tryCount", tryCount), zap.Int("maxRetryCount", maxRetryCount))
+				return nil
+			}
+
+			// there was an error
 			if tryCount >= maxRetryCount { // if tries exhausted, return
 				logger.Warn("Maximum retry limit reached... giving up...", zap.Int("tryCount", tryCount), zap.Int("maxRetryCount", maxRetryCount))
 				return err
@@ -32,6 +40,7 @@ func DoRetry(ctx context.Context, logger *zap.Logger, retryableFunc func() error
 				logger.Warn("The error is not retryable... giving up...", zap.Int("tryCount", tryCount), zap.Int("maxRetryCount", maxRetryCount), zap.Error(err))
 				return err
 			}
+
 			// if we should retry, set the timeout
 			randomNumberMilliseconds := time.Duration(rand.Intn(1000)) * time.Millisecond // #nosec G404 this is just a retryer
 			exp := time.Duration(math.Pow(2, float64(tryCount))) * time.Second

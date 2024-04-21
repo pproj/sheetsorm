@@ -51,6 +51,26 @@ func TestRetryerDoesAllIfCan(t *testing.T) {
 	assert.Equal(t, maxRetryCount, calls)
 }
 
+func TestRetryerNoErrorNoRetry(t *testing.T) {
+	ctx := context.Background()
+
+	l := zaptest.NewLogger(t)
+	var calls int
+	var retryCheckerCalled bool
+
+	err := DoRetry(ctx, l, func() error {
+		calls++
+		return nil
+	}, func(err error) bool {
+		retryCheckerCalled = true
+		return true
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, calls)
+	assert.False(t, retryCheckerCalled)
+}
+
 func TestRetryerDontRetryIfShouldNot(t *testing.T) {
 	ctx := context.Background()
 
