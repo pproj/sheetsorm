@@ -17,8 +17,8 @@ steps:
     image: appleboy/drone-telegram
     settings:
       token:
-        from_secret: TELEGRAM_TOKEN
+        from_secret: CI_ERROR_REPORT_TELEGRAM_TOKEN
       to:
-        from_secret: TELEGRAM_CHAT_ID
+        from_secret: CI_ERROR_REPORT_TELEGRAM_CHAT_ID
     when:
       status: [ failure ]
