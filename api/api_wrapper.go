@@ -34,6 +34,15 @@ func IsTooManyRequests(err error) bool {
 	return errors.As(err, &apiErr) && apiErr.Code == http.StatusTooManyRequests
 }
 
+func IsServiceUnavailable(err error) bool { // sometimes google api does this lol...
+	var apiErr *googleapi.Error
+	return errors.As(err, &apiErr) && apiErr.Code == http.StatusServiceUnavailable
+}
+
+func ShouldRetryAPICall(err error) bool {
+	return IsTooManyRequests(err) || IsServiceUnavailable(err)
+}
+
 func (aw *ApiWrapperImpl) bindRange(range_ string) string {
 
 	if strings.Contains(range_, "!") {
@@ -53,7 +62,7 @@ func (aw *ApiWrapperImpl) GetSpreadsheet(ctx context.Context) (*sheets.Spreadshe
 		var err error
 		result, err = aw.srv.Spreadsheets.Get(aw.docID).Context(ctx).Do()
 		return err
-	}, IsTooManyRequests)
+	}, ShouldRetryAPICall)
 }
 
 func (aw *ApiWrapperImpl) GetRange(ctx context.Context, range_ string) (*sheets.ValueRange, error) {
@@ -65,7 +74,7 @@ func (aw *ApiWrapperImpl) GetRange(ctx context.Context, range_ string) (*sheets.
 		var err error
 		result, err = aw.srv.Spreadsheets.Values.Get(aw.docID, boundRange).Context(ctx).Do()
 		return err
-	}, IsTooManyRequests)
+	}, ShouldRetryAPICall)
 }
 
 func (aw *ApiWrapperImpl) BatchGetRanges(ctx context.Context, ranges []string) (*sheets.BatchGetValuesResponse, error) {
@@ -80,7 +89,7 @@ func (aw *ApiWrapperImpl) BatchGetRanges(ctx context.Context, ranges []string) (
 		var err error
 		result, err = aw.srv.Spreadsheets.Values.BatchGet(aw.docID).Context(ctx).Ranges(boundRanges...).Do()
 		return err
-	}, IsTooManyRequests)
+	}, ShouldRetryAPICall)
 }
 
 func (aw *ApiWrapperImpl) BatchUpdate(ctx context.Context, values []*sheets.ValueRange) (*sheets.BatchUpdateValuesResponse, error) {
@@ -113,5 +122,5 @@ func (aw *ApiWrapperImpl) BatchUpdate(ctx context.Context, values []*sheets.Valu
 		var err error
 		result, err = aw.srv.Spreadsheets.Values.BatchUpdate(aw.docID, &req).Context(ctx).Do()
 		return err
-	}, IsTooManyRequests)
+	}, ShouldRetryAPICall)
 }
