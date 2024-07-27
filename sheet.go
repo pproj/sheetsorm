@@ -211,7 +211,7 @@ func (si *SheetImpl) UpdateRecords(ctx context.Context, records ...interface{}) 
 			continue
 		}
 
-		return errors.Join(e.ErrInvalidType, fmt.Errorf("expected pointer to struct or a slice of poitners to structs"))
+		return errors.Join(e.ErrInvalidType, fmt.Errorf("expected pointer to struct or a slice of pointers to structs"))
 	}
 
 	// create a sample first, for the toolkit
