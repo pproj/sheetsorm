@@ -2,6 +2,7 @@ package typemagic
 
 import (
 	"database/sql/driver"
+	"encoding"
 	"fmt"
 	"github.com/pproj/sheetsorm/column"
 	"reflect"
@@ -10,8 +11,9 @@ import (
 	"time"
 )
 
-var stringerType = reflect.TypeOf((*fmt.Stringer)(nil)).Elem() // yes...
-var valuerType = reflect.TypeOf((*driver.Valuer)(nil)).Elem()  // yes...
+var stringerType = reflect.TypeOf((*fmt.Stringer)(nil)).Elem()                // yes...
+var valuerType = reflect.TypeOf((*driver.Valuer)(nil)).Elem()                 // yes...
+var textMarshalerType = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem() // yes...
 
 func workOutValue(value reflect.Value, br BoolRepresentation) string {
 	// value should never be a pointer...
@@ -59,6 +61,28 @@ func workOutValue(value reflect.Value, br BoolRepresentation) string {
 			if vPtr.Type().Implements(stringerType) {
 				s := vPtr.Interface().(fmt.Stringer)
 				return s.String()
+			}
+		}
+	}
+
+	// then textMarshaler
+	if value.Type().Implements(textMarshalerType) {
+		s := v.(encoding.TextMarshaler)
+		binstr, err := s.MarshalText()
+		if err != nil {
+			panic(err)
+		}
+		return string(binstr)
+	} else { // this is getting weird...
+		if value.CanAddr() {
+			vPtr := value.Addr()
+			if vPtr.Type().Implements(textMarshalerType) {
+				s := vPtr.Interface().(encoding.TextMarshaler)
+				binstr, err := s.MarshalText()
+				if err != nil {
+					panic(err)
+				}
+				return string(binstr)
 			}
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"github.com/pproj/sheetsorm/column"
 	"github.com/pproj/sheetsorm/errors"
 	"github.com/stretchr/testify/assert"
+	"net"
 	"reflect"
 	"testing"
 	"time"
@@ -172,6 +173,36 @@ func (tv *TestValuerErrorsPtrRcv) Value() (driver.Value, error) {
 	return int64(0), errors.ErrColsNotInOrder
 }
 
+type TestTextMarshaler struct{}
+
+func (TestTextMarshaler) MarshalText() (text []byte, err error) {
+	return []byte("hello"), nil
+}
+
+type TestTextMarshalerPtrRcv struct {
+	called bool
+}
+
+func (ttmpr *TestTextMarshalerPtrRcv) MarshalText() (text []byte, err error) {
+	ttmpr.called = true
+	return []byte("hello"), nil
+}
+
+type TestTextMarshalerError struct{}
+
+func (TestTextMarshalerError) MarshalText() (text []byte, err error) {
+	return nil, errors.ErrColsNotInOrder
+}
+
+type TestTextMarshalerErrorPtrRcv struct {
+	called bool
+}
+
+func (ttmepr *TestTextMarshalerErrorPtrRcv) MarshalText() (text []byte, err error) {
+	ttmepr.called = true
+	return nil, errors.ErrColsNotInOrder
+}
+
 func TestWorkOutValue(t *testing.T) {
 
 	type testStruct struct {
@@ -192,6 +223,7 @@ func TestWorkOutValue(t *testing.T) {
 		Bool    bool
 		Bool2   bool
 		Time    time.Time
+		IPAddr  net.IP
 		Wild    []int //this should trigger the %v path
 
 		IntValuer     TestValuerInt
@@ -214,47 +246,57 @@ func TestWorkOutValue(t *testing.T) {
 		NotStructValuerPtr *TestValuerThatIsNotStructPtrRcv
 		ErrorValuer        TestValuerErrors
 		ErrorValuerPtr     *TestValuerErrorsPtrRcv
+
+		TextMarshaler         TestTextMarshaler
+		TextMarshalerPtr      *TestTextMarshalerPtrRcv
+		TextMarshalerError    TestTextMarshalerError
+		TextMarshalerErrorPtr *TestTextMarshalerErrorPtrRcv
 	}
 
 	testTimestamp := time.Now()
 	testValNotStructValuerPtrRcv := TestValuerThatIsNotStructPtrRcv(785)
 	testVal := testStruct{
-		Str:                "hello",
-		Int:                -2,
-		Int8:               -64,
-		Int16:              -1024,
-		Int32:              -1048576,
-		Int64:              -281474976710656,
-		UInt:               3,
-		UInt8:              64,
-		UInt16:             1024,
-		UInt32:             1048576,
-		UInt64:             281474976710656,
-		Float64:            4.2,
-		Float32:            2.4,
-		UUID:               uuid.New(),
-		Bool:               true,
-		Bool2:              false,
-		Time:               time.Now(),
-		Wild:               []int{1, 2, 3},
-		IntValuer:          TestValuerInt{},
-		FloatValuer:        TestValuerFloat{},
-		BoolValuer:         TestValuerBool{},
-		BytesValuer:        TestValuerBytes{},
-		StringValuer:       TestValuerString{},
-		TimeValuer:         TestValuerTime{testTime: testTimestamp},
-		InvalidValuer:      TestValuerInvalid{},
-		IntValuerPtr:       &TestValuerIntPtrRcv{},
-		FloatValuerPtr:     &TestValuerFloatPtrRcv{},
-		BoolValuerPtr:      &TestValuerBoolPtrRcv{},
-		BytesValuerPtr:     &TestValuerBytesPtrRcv{},
-		StringValuerPtr:    &TestValuerStringPtrRcv{},
-		TimeValuerPtr:      &TestValuerTimePtrRcv{testTime: testTimestamp},
-		InvalidValuerPtr:   &TestValuerInvalidPtrRcv{},
-		NotStructValuer:    TestValuerThatIsNotStruct(77),
-		NotStructValuerPtr: &testValNotStructValuerPtrRcv,
-		ErrorValuer:        TestValuerErrors{},
-		ErrorValuerPtr:     &TestValuerErrorsPtrRcv{},
+		Str:                   "hello",
+		Int:                   -2,
+		Int8:                  -64,
+		Int16:                 -1024,
+		Int32:                 -1048576,
+		Int64:                 -281474976710656,
+		UInt:                  3,
+		UInt8:                 64,
+		UInt16:                1024,
+		UInt32:                1048576,
+		UInt64:                281474976710656,
+		Float64:               4.2,
+		Float32:               2.4,
+		UUID:                  uuid.New(),
+		Bool:                  true,
+		Bool2:                 false,
+		Time:                  time.Now(),
+		IPAddr:                net.IPv4(127, 0, 0, 1),
+		Wild:                  []int{1, 2, 3},
+		IntValuer:             TestValuerInt{},
+		FloatValuer:           TestValuerFloat{},
+		BoolValuer:            TestValuerBool{},
+		BytesValuer:           TestValuerBytes{},
+		StringValuer:          TestValuerString{},
+		TimeValuer:            TestValuerTime{testTime: testTimestamp},
+		InvalidValuer:         TestValuerInvalid{},
+		IntValuerPtr:          &TestValuerIntPtrRcv{},
+		FloatValuerPtr:        &TestValuerFloatPtrRcv{},
+		BoolValuerPtr:         &TestValuerBoolPtrRcv{},
+		BytesValuerPtr:        &TestValuerBytesPtrRcv{},
+		StringValuerPtr:       &TestValuerStringPtrRcv{},
+		TimeValuerPtr:         &TestValuerTimePtrRcv{testTime: testTimestamp},
+		InvalidValuerPtr:      &TestValuerInvalidPtrRcv{},
+		NotStructValuer:       TestValuerThatIsNotStruct(77),
+		NotStructValuerPtr:    &testValNotStructValuerPtrRcv,
+		ErrorValuer:           TestValuerErrors{},
+		ErrorValuerPtr:        &TestValuerErrorsPtrRcv{},
+		TextMarshaler:         TestTextMarshaler{},
+		TextMarshalerPtr:      &TestTextMarshalerPtrRcv{},
+		TextMarshalerError:    TestTextMarshalerError{},
+		TextMarshalerErrorPtr: &TestTextMarshalerErrorPtrRcv{},
 	}
 
 	expectedStrings := []string{
@@ -275,6 +317,7 @@ func TestWorkOutValue(t *testing.T) {
 		"yes",
 		"no",
 		testVal.Time.String(),
+		"127.0.0.1",
 		"[1 2 3]", // default
 		"1",
 		"1.2",
@@ -292,6 +335,10 @@ func TestWorkOutValue(t *testing.T) {
 		"!!!PANIC!!!",
 		"78",
 		"786",
+		"!!!PANIC!!!",
+		"!!!PANIC!!!",
+		"hello",
+		"hello",
 		"!!!PANIC!!!",
 		"!!!PANIC!!!",
 	}
@@ -332,6 +379,8 @@ func TestWorkOutValue(t *testing.T) {
 		assert.True(t, testVal.IntValuerPtr.called)
 		assert.True(t, testVal.ErrorValuerPtr.called)
 		assert.Equal(t, 18, calledValuers)
+		assert.True(t, testVal.TextMarshalerPtr.called)
+		assert.True(t, testVal.TextMarshalerErrorPtr.called)
 	})
 }
 

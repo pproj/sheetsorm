@@ -4,6 +4,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pproj/sheetsorm/errors"
 	"github.com/stretchr/testify/assert"
+	"net"
 	"reflect"
 	"strconv"
 	"testing"
@@ -76,6 +77,10 @@ func TestLoadIntoStruct(t *testing.T) {
 		Int2    int
 		IntPtr2 *int
 	}
+	type testStructIPs struct {
+		IP    net.IP  `sheet:"A"`
+		IPPtr *net.IP `sheet:"B"`
+	}
 	type testStructScanner struct {
 		Scanner    TestScanner  `sheet:"A"`
 		ScannerPtr *TestScanner `sheet:"B"`
@@ -132,6 +137,8 @@ func TestLoadIntoStruct(t *testing.T) {
 	testValBoolTrue := true
 	testValBoolFalse := false
 	testValFloat := 12.2
+	testValIPv4 := net.IPv4(127, 0, 0, 1)
+	testValIPv6 := net.ParseIP("fe80::")
 	testScannerNonStruct := TestScannerNotStructBased(0)
 
 	testCases := []struct {
@@ -268,7 +275,36 @@ func TestLoadIntoStruct(t *testing.T) {
 			},
 			item:        &testStructNested{},
 			expectedErr: strconv.ErrSyntax,
-		}, {
+		},
+		{
+			name: "ips_v4",
+			data: map[string]string{
+				"A": "127.0.0.2",
+				"B": "127.0.0.1",
+			},
+			item: &testStructIPs{},
+			expectedItem: testStructIPs{
+				IP:    net.IPv4(127, 0, 0, 2),
+				IPPtr: &testValIPv4,
+			},
+			expectedErr:   nil,
+			expectedPanic: false,
+		},
+		{
+			name: "ips_v6",
+			data: map[string]string{
+				"A": "fe80::1",
+				"B": "fe80::",
+			},
+			item: &testStructIPs{},
+			expectedItem: testStructIPs{
+				IP:    net.ParseIP("fe80::1"),
+				IPPtr: &testValIPv6,
+			},
+			expectedErr:   nil,
+			expectedPanic: false,
+		},
+		{
 			name: "overwrite",
 			data: map[string]string{
 				"A": "420",

@@ -2,6 +2,7 @@ package typemagic
 
 import (
 	"database/sql"
+	"encoding"
 	"github.com/pproj/sheetsorm/errors"
 	"reflect"
 	"strconv"
@@ -98,7 +99,8 @@ func magicLoaderIter(item interface{}, iterator func(value reflect.Value, t Tag)
 	return successfullyVisitedCount, nil
 }
 
-var scannerType = reflect.TypeOf((*sql.Scanner)(nil)).Elem() // yes...
+var scannerType = reflect.TypeOf((*sql.Scanner)(nil)).Elem()                  // yes...
+var unmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem() // eh
 
 // convertAndStoreProperly returns an error only if the data is invalid for the format, otherwise it panics as usual
 func convertAndStoreProperly(value reflect.Value, data string, br BoolRepresentation) error {
@@ -113,6 +115,20 @@ func convertAndStoreProperly(value reflect.Value, data string, br BoolRepresenta
 			if vPtr.Type().Implements(scannerType) {
 				s := vPtr.Interface().(sql.Scanner)
 				return s.Scan(data)
+			}
+		}
+	}
+
+	// Try the same with TextUnmarshaler https://pkg.go.dev/encoding#TextMarshaler
+	if value.Type().Implements(unmarshalerType) { // might happen if we already got a pointer type
+		s := value.Interface().(encoding.TextUnmarshaler)
+		return s.UnmarshalText([]byte(data))
+	} else { // if we didn't get a pointer type, we might still can do something about that
+		if value.CanAddr() {
+			vPtr := value.Addr()
+			if vPtr.Type().Implements(unmarshalerType) {
+				s := vPtr.Interface().(encoding.TextUnmarshaler)
+				return s.UnmarshalText([]byte(data))
 			}
 		}
 	}
