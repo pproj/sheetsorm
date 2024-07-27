@@ -430,3 +430,75 @@ func TestToolkit_translateRowDataToUpdateRanges(t *testing.T) {
 	}
 
 }
+
+func TestToolkit_translateFullRowToMap(t *testing.T) {
+	testCases := []struct {
+		name         string
+		cols         column.Cols
+		row          []interface{}
+		expectedData map[string]string
+	}{
+		{
+			name: "simple",
+			cols: column.Cols{"A", "B", "C"},
+			row:  []interface{}{"a", "b", "c"},
+			expectedData: map[string]string{
+				"A": "a",
+				"B": "b",
+				"C": "c",
+			},
+		},
+		{
+			name: "shifted",
+			cols: column.Cols{"C", "D", "E"},
+			row:  []interface{}{"a", "b", "c"},
+			expectedData: map[string]string{
+				"C": "a",
+				"D": "b",
+				"E": "c",
+			},
+		},
+		{
+			name: "less_right",
+			cols: column.Cols{"A", "B", "C"},
+			row:  []interface{}{"a", "b"}, // yeah, google api does that when the cells are empty
+			expectedData: map[string]string{
+				"A": "a",
+				"B": "b",
+				"C": "",
+			},
+		},
+		{
+			name: "less_left",
+			cols: column.Cols{"A", "B", "C"},
+			row:  []interface{}{"", "b", "c"},
+			expectedData: map[string]string{
+				"A": "",
+				"B": "b",
+				"C": "c",
+			},
+		},
+		{
+			name: "not_continuous",
+			cols: column.Cols{"A", "B", "C", "E"},
+			row:  []interface{}{"a", "b", "c", "d", "e"},
+			expectedData: map[string]string{
+				"A": "a",
+				"B": "b",
+				"C": "c",
+				"E": "e",
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tk := sheetsToolkit{
+				colShift: tc.cols.Shift(),
+				cols:     tc.cols,
+				logger:   zaptest.NewLogger(t),
+			}
+			got := tk.translateFullRowToMap(tc.row)
+			assert.Equal(t, tc.expectedData, got)
+		})
+	}
+}

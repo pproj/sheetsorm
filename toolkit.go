@@ -136,10 +136,19 @@ func (st *sheetsToolkit) uidToRowNum(ctx context.Context, uid string) (int, erro
 func (st *sheetsToolkit) translateFullRowToMap(row []interface{}) map[string]string {
 	resultSet := make(map[string]string, len(st.cols))
 	for _, col := range st.cols {
-		idx := column.ColIndex(col)
+		idx := column.ColIndex(col) - st.colShift // column idx in the source row (un-shifted)
 
-		val := row[idx-st.colShift]
-		resultSet[col] = val.(string)
+		var val string
+		if idx >= len(row) {
+			// sometimes google api skips cells from the right side when they are empty
+			// but, we want to include these empty values in the row data, otherwise we wouldn't know if
+			// they are empty or just not included in the result set because not queried
+			val = ""
+		} else {
+			val = row[idx].(string)
+		}
+
+		resultSet[col] = val
 	}
 	return resultSet
 }
