@@ -85,6 +85,9 @@ func WithLogger(l *zap.Logger) SheetInitializationOption {
 	}
 }
 
+// typeAssert asserts that the presented val is a type of expected kind.
+// by presenting multiple expectedKinds, it is possible to check if the type "wraps" an expected type
+// for example: `typeAssert(a, reflect.Ptr, reflect.Slice, reflect.Struct)` asserts that `a` is a pointer pointing to a slice of structs
 func typeAssert(val interface{}, expectedKinds ...reflect.Kind) bool {
 	typ := reflect.TypeOf(val)
 	for i, expectedKind := range expectedKinds {
@@ -98,6 +101,7 @@ func typeAssert(val interface{}, expectedKinds ...reflect.Kind) bool {
 	return true
 }
 
+// getToolkit instantiates a new toolkit that is configured for the presented sample
 func (si *SheetImpl) getToolkit(sample interface{}) (*sheetsToolkit, error) {
 	cols := typemagic.DumpCols(sample)
 	uidCol := typemagic.DumpUIDCol(sample)
